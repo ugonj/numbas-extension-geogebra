@@ -210,12 +210,25 @@ Numbas.addExtension('geogebra',['jme','math','jme-display'],function(extension) 
     }
 
     function replace_geogebra_object(app,name,definition) {
+        /* If we enter an expression with variables, the proper
+        * separator should be ':', otherwise '=' */
+        var separator = " = "
+        var vname = name
+        if(definition.type == "expression"){
+          if(definition.tree.tok.name.match("=")){separator = " : "}
+          else{
+            if(!name.match("\\(")){
+              var variables = jme.findvars(definition.tree);
+              vname = name + "(" + variables.join(",") + ")"
+          }
+          }
+        }
         try {
             definition = tokToGeoGebra(definition);
         } catch(e) {
-            reject("Error in replacement of GeoGebra object "+name+" - "+e.message);
+            reject("Error in replacement of GeoGebra object "+vname+" - "+e.message);
         }
-        var cmd = unescape_braces(name+' = '+definition);
+        var cmd = unescape_braces(vname+separator+definition);
         var ok = app.evalCommand(cmd);
         return ok;
     }
@@ -364,7 +377,10 @@ Numbas.addExtension('geogebra',['jme','math','jme-display'],function(extension) 
 
                 // link geogebra object values to part answers
                 for(var name in parts) {
-                    if(app.exists(name)) {
+                    // Eliminate the variables from the name: from `exp(x,y)` only keep `exp`.
+                    var m = name.match("\\(")
+                    var vname = m ? name.substring(0,m.index) : name
+                    if(app.exists(vname)) {
                         objects.push(name);
                     }
                 }
@@ -625,7 +641,7 @@ Numbas.addExtension('geogebra',['jme','math','jme-display'],function(extension) 
      * @returns {string}
      */
     var tokToGeoGebra = extension.tokToGeoGebra = function(tok) {
-        var known_types = ['vector','list','number','string'];
+        var known_types = ['vector','list','number','string','expression'];
         for(var i=0;i<known_types.length;i++) {
             if(jme.isType(tok,known_types[i])) {
                 tok = jme.castToType(tok,known_types[i]);
@@ -647,6 +663,9 @@ Numbas.addExtension('geogebra',['jme','math','jme-display'],function(extension) 
                 var list = tok.value.map(tokToGeoGebra);
                 definition = '{'+list.join(',') +'}';
                 break;
+          case 'expression':
+              definition = jme.tokenToDisplayString(tok);
+              break;
             default:
                 throw(new Error("Replaced value should be a number, string, vector or list, instead it's a "+tok.type));
         }
